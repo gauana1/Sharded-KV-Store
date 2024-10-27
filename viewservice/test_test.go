@@ -52,7 +52,7 @@ func Test1(t *testing.T) {
 	// very first primary
 	fmt.Printf("Test: First primary ...\n")
 
-	for i := 0; i < DeadPings*2; i++ {
+	for i := 0; i < DeadPings*2 ; i++ {
 		view, _ := ck1.Ping(0)
 		if view.Primary == ck1.me {
 			break

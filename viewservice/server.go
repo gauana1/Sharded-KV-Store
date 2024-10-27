@@ -47,18 +47,14 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	defer vs.mu.Unlock()
 	if (args.Viewnum == 0){
 		//this means this particular server just restarted
-		vs.time_map[args.Me] = NodeState{0, true}
-		vs.primary_acked = true
+		vs.time_map[args.Me] = NodeState{time : 0, Restarted: true}
 	} else{
-		vs.time_map[args.Me] = NodeState{0, false}
+		vs.time_map[args.Me] = NodeState{time : 0, Restarted: false} 
 	}
-	if (args.Viewnum != uint(vs.view.state_number)){     // if kv-server's viewnum is not the same as vs's viewnum,
-		reply.View.Viewnum = uint(vs.view.state_number)  // then update the kv's viewnum
-	} else {
-		reply.View.Viewnum = args.Viewnum 				 // else, keep the viewnum the same
-	}
-	reply.View = View{uint(vs.view.state_number), vs.view.backup, vs.view.primary}
-	fmt.Println(reply.View)
+	if args.Me == vs.view.primary && args.Viewnum == uint(vs.view.state_number) {
+		vs.primary_acked = true
+	}	
+	reply.View = View{Viewnum: uint(vs.view.state_number), Primary: vs.view.primary, Backup: vs.view.backup}
 	return nil
 }
 
@@ -68,7 +64,9 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 
 	// TODO: Your code here.
-
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	reply.View = View{Viewnum: uint(vs.view.state_number), Primary: vs.view.primary, Backup: vs.view.backup} 
 	return nil
 }
 
@@ -79,10 +77,22 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 // accordingly.
 //
 func(vs *ViewServer) replace(primary string, backup string){
+	flag := false
+	if vs.time_map[primary].time >= DeadPings{
+		vs.view.primary = ""
+	}
+	if vs.time_map[backup].time >= DeadPings{
+		vs.view.backup = ""
+	}
+	if vs.view.primary == "" && vs.view.backup != ""{
+		vs.view.primary = vs.view.backup
+		vs.view.backup = ""
+		flag = true
+	}
 	for key, value := range vs.time_map{
 		if key != primary && key != backup{
 			if value.time <= DeadPings{
-				if vs.view.primary == ""{
+				if vs.view.primary == "" && (!value.Restarted || vs.view.state_number == 0){
 					vs.view.primary = key
 					vs.primary_acked = false
 				} else if vs.view.backup == ""{
@@ -90,32 +100,26 @@ func(vs *ViewServer) replace(primary string, backup string){
 					vs.primary_acked = false
 				}
 			}
+			flag = true
 		} 
+	}
+	if flag{
+		vs.view.state_number +=1
 	}
 }
 func (vs *ViewServer) tick() {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
-	fmt.Println(vs.time_map)
 	for key , value:= range vs.time_map{
 		vs.time_map[key] = NodeState{value.time +1, value.Restarted}
 	}
-	fmt.Println(vs.time_map, vs.primary_acked)
+	primary := vs.view.primary
+	backup := vs.view.backup
 	if vs.primary_acked {
 		//if primary acked then we can change the view if needed
 		//if we make changes to the view then we set primary acked as false i think
 		//where do we do the assignment of the new primary if the primary crashes, i think in here
-		primary := vs.view.primary
-		backup := vs.view.backup
-		if (vs.time_map[primary].time >= DeadPings && vs.time_map[backup].time>= DeadPings) || (primary == "" && backup == ""){
-			//increment view, NOT TOO SURE
-			vs.view.primary = ""
-			vs.view.backup = ""
-			vs.view.state_number += 1
-			//call func to replace
-			vs.replace(primary, backup)
-		} else if vs.time_map[primary].Restarted || vs.time_map[backup].Restarted{
-			vs.view.state_number += 1
+		if vs.time_map[primary].Restarted || vs.time_map[backup].Restarted{
 			if vs.time_map[primary].Restarted && !vs.time_map[backup].Restarted{
 				vs.view.primary = backup
 				vs.view.backup = ""
@@ -126,7 +130,9 @@ func (vs *ViewServer) tick() {
 				//call func to replace backup
 				vs.replace(primary, backup)
 			}
-		} 
+		} else{
+			vs.replace(primary, backup)
+		}
 	}
 }
 
