@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"math/big"
 	"net/rpc"
+	"time"
 )
 
 type Clerk struct {
 	vs *viewservice.Clerk
 	// TODO: Your declarations here
+	me      string
+	primary string
+	seqNum  int64
 }
 
 // this may come in handy.
@@ -25,6 +29,10 @@ func MakeClerk(vshost string, me string) *Clerk {
 	ck := new(Clerk)
 	ck.vs = viewservice.MakeClerk(me, vshost)
 	// TODO: Your ck.* initializations here
+	ck.me = me
+	ck.seqNum = 0
+	view, _ := ck.vs.Get()
+	ck.primary = view.Primary
 
 	return ck
 }
@@ -67,16 +75,80 @@ func call(srv string, rpcname string,
 // primary replies with the value or the primary
 // says the key doesn't exist (has never been Put().
 func (ck *Clerk) Get(key string) string {
+	ck.seqNum++
+	args := &GetArgs{
+		Key: key,
+		Id:  ck.seqNum,
+		Me:  ck.me,
+	}
 
-	// TODO: Your code here.
+	for {
+		if ck.primary == "" {
+			view, _ := ck.vs.Get()
+			ck.primary = view.Primary
+		}
 
-	return "???"
+		var reply GetReply
+		ok := call(ck.primary, "PBServer.Get", args, &reply)
+
+		if ok {
+			if reply.Err == OK {
+				return reply.Value
+			} else if reply.Err == ErrNoKey {
+				return ""
+			} else if reply.Err == ErrWrongServer {
+				// The server is not the primary; get the latest primary from viewservice
+				view, _ := ck.vs.Get()
+				ck.primary = view.Primary
+			} else {
+				// Some other error; retry
+			}
+		} else {
+			// RPC failed; get latest view and retry
+			view, _ := ck.vs.Get()
+			ck.primary = view.Primary
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // send a Put or Append RPC
 func (ck *Clerk) PutAppend(key string, value string, op string) {
+	ck.seqNum++
+	args := &PutAppendArgs{
+		Key:   key,
+		Value: value,
+		Op:    op,
+		Id:    ck.seqNum,
+		Me:    ck.me,
+	}
 
-	// TODO: Your code here.
+	for {
+		if ck.primary == "" {
+			view, _ := ck.vs.Get()
+			ck.primary = view.Primary
+		}
+
+		var reply PutAppendReply
+		ok := call(ck.primary, "PBServer.PutAppend", args, &reply)
+
+		if ok {
+			if reply.Err == OK {
+				return
+			} else if reply.Err == ErrWrongServer {
+				// The server is not the primary; get the latest primary from viewservice
+				view, _ := ck.vs.Get()
+				ck.primary = view.Primary
+			} else {
+				// implement some other error; retry
+			}
+		} else {
+			// RPC failed; get latest view and retry
+			view, _ := ck.vs.Get()
+			ck.primary = view.Primary
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // tell the primary to update key's value.
