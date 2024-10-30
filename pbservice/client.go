@@ -59,7 +59,6 @@ func call(srv string, rpcname string,
 		return false
 	}
 	defer c.Close()
-
 	err := c.Call(rpcname, args, reply)
 	if err == nil {
 		return true
@@ -119,19 +118,16 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		Key:   key,
 		Value: value,
 		Op:    op,
-		Id:    ck.seqNum,
+		Id:    nrand(),
 		Me:    ck.me,
 	}
-
 	for {
 		if ck.primary == "" {
 			view, _ := ck.vs.Get()
 			ck.primary = view.Primary
 		}
-
 		var reply PutAppendReply
 		ok := call(ck.primary, "PBServer.PutAppend", args, &reply)
-
 		if ok {
 			if reply.Err == OK {
 				return

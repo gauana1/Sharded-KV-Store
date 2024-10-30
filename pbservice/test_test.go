@@ -55,7 +55,6 @@ func TestBasicFail(t *testing.T) {
 	if vck.Primary() != s1.me {
 		t.Fatal("first primary never formed view")
 	}
-
 	ck.Put("111", "v1")
 	check(ck, "111", "v1")
 
@@ -92,7 +91,6 @@ func TestBasicFail(t *testing.T) {
 
 	ck.Put("3", "33")
 	check(ck, "3", "33")
-
 	// give the backup time to initialize
 	time.Sleep(3 * viewservice.PingInterval)
 
@@ -179,13 +177,11 @@ func TestBasicFail(t *testing.T) {
 
 func TestAtMostOnce(t *testing.T) {
 	runtime.GOMAXPROCS(4)
-
 	tag := "tamo"
 	vshost := port(tag+"v", 1)
 	vs := viewservice.StartServer(vshost)
 	time.Sleep(time.Second)
 	vck := viewservice.MakeClerk("", vshost)
-
 	fmt.Printf("Test: at-most-once Append; unreliable ...\n")
 
 	const nservers = 1
@@ -194,7 +190,6 @@ func TestAtMostOnce(t *testing.T) {
 		sa[i] = StartServer(vshost, port(tag, i+1))
 		sa[i].setunreliable(true)
 	}
-
 	for iters := 0; iters < viewservice.DeadPings*2; iters++ {
 		view, _ := vck.Get()
 		if view.Primary != "" && view.Backup != "" {
@@ -202,7 +197,6 @@ func TestAtMostOnce(t *testing.T) {
 		}
 		time.Sleep(viewservice.PingInterval)
 	}
-
 	// give p+b time to ack, initialize
 	time.Sleep(viewservice.PingInterval * viewservice.DeadPings)
 

@@ -1,5 +1,7 @@
 package pbservice
 
+import "time"
+
 const (
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
@@ -36,4 +38,35 @@ type GetReply struct {
 	Value string
 }
 
+type TransferArgs struct{
+	Id 				int64
+	Me 				string
+	Dict 			map[string]string //thing actually sent over
+	SeenRequests 	map[int64] bool
+}
+type TransferReply struct{
+	Err Err
+}
 // TODO: Your RPC definitions here.
+func (pb *PBServer) TransferState(){
+	//always transfer from current primary to current backup
+	args := &TransferArgs{
+		Id : 1, 
+		Me: pb.me, 
+		Dict: pb.dict,
+	}	
+	for {
+		var reply TransferReply
+		ok:= call(pb.currentView.Backup, "PBServer.Transfer", args, &reply)
+		if ok{
+			if reply.Err == OK{
+				return 
+			} 
+		}
+		time.Sleep(100*time.Millisecond)
+	}
+}
+func (pb *PBServer) Transfer(args *TransferArgs, reply *TransferReply){
+	pb.dict = args.Dict
+	reply.Err = OK
+}
