@@ -80,7 +80,6 @@ func (ck *Clerk) Get(key string) string {
 		Id:  ck.seqNum,
 		Me:  ck.me,
 	}
-
 	for {
 		if ck.primary == "" {
 			view, _ := ck.vs.Get()
@@ -92,6 +91,7 @@ func (ck *Clerk) Get(key string) string {
 
 		if ok {
 			if reply.Err == OK {
+				fmt.Println(reply.Value, "FD")
 				return reply.Value
 			} else if reply.Err == ErrNoKey {
 				return ""
