@@ -423,6 +423,7 @@ func checkAppends(t *testing.T, v string, counts []int) {
 				t.Fatalf("missing element in Append result")
 			}
 			off1 := strings.LastIndex(v, wanted)
+			fmt.Println(off1, "WUT", off)
 			if off1 != off {
 				t.Fatalf("duplicate element in Append result")
 			}
@@ -546,7 +547,6 @@ func TestConcurrentSameAppend(t *testing.T) {
 
 func TestConcurrentSameUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
-
 	tag := "csu"
 	vshost := port(tag+"v", 1)
 	vs := viewservice.StartServer(vshost)
@@ -863,7 +863,7 @@ func TestRepeatedCrashUnreliable(t *testing.T) {
 	}
 
 	ck := MakeClerk(vshost, "")
-
+	fmt.Println("does it get here")
 	checkAppends(t, ck.Get("0"), counts)
 
 	ck.Put("aaa", "bbb")

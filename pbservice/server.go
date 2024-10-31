@@ -32,6 +32,7 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	// TODO: Your code here.
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
+	// fmt.Println(pb.dict)
 	view, _ := pb.vs.Get()
 	if pb.me != view.Primary{
 		reply.Err = ErrWrongServer
