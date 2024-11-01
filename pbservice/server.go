@@ -15,16 +15,16 @@ import (
 )
 
 type PBServer struct {
-	mu         		sync.Mutex
-	l          		net.Listener
-	dead       		int32 // for testing
-	unreliable 		int32 // for testing
-	me         		string
-	vs         		*viewservice.Clerk
+	mu         sync.Mutex
+	l          net.Listener
+	dead       int32 // for testing
+	unreliable int32 // for testing
+	me         string
+	vs         *viewservice.Clerk
 	// TODO: Your declarations here.
-	currentView  	viewservice.View
-	dict			map[string] string
-	seenRequests 	map[int64]bool
+	currentView  viewservice.View
+	dict         map[string]string
+	seenRequests map[int64]bool
 }
 
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
@@ -34,7 +34,7 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	defer pb.mu.Unlock()
 	// fmt.Println(pb.dict)
 	view, _ := pb.vs.Get()
-	if pb.me != view.Primary{
+	if pb.me != view.Primary {
 		reply.Err = ErrWrongServer
 		return nil
 	}
@@ -45,9 +45,9 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 
 	value, exists := pb.dict[args.Key]
 	// fmt.Println(value, exists, "get")
-	if !exists{
+	if !exists {
 		reply.Err = ErrNoKey
-	} else{
+	} else {
 		reply.Err = OK
 		reply.Value = value
 	}
@@ -55,37 +55,40 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 }
 
 func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
-
 	// TODO: Your code here.
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
+
+	if pb.me != pb.currentView.Primary {
+		reply.Err = ErrWrongServer
+		return nil
+	}
+
 	// At-most-once semantics
 	if pb.seenRequests[args.Id] {
 		reply.Err = OK
 		return nil
 	}
-	if args.Op == "Append" {
-		value, exists := pb.dict[args.Key]
-		if !exists{
-			pb.dict[args.Key] = args.Value
-		} else{
-			pb.dict[args.Key] = value + args.Value
-		}
-	}else if args.Op == "Put"{
-		pb.dict[args.Key] = args.Value
-	} else{
-		reply.Err = "Unknown Operation"
-		return nil
-	}
-	
+
 	// Forward the operation to the backup
-	if pb.currentView.Backup != "" && pb.me == pb.currentView.Primary{
+	if pb.currentView.Backup != "" {
 		var backupReply PutAppendReply
 		ok := call(pb.currentView.Backup, "PBServer.ForwardPutAppend", args, &backupReply)
 		if !ok || backupReply.Err != OK {
-			reply.Err = "Backup failed"
-			return nil
+			fmt.Printf("Failed to replicate to backup: %v\n", pb.currentView.Backup)
+			// Proceed anyway
 		}
+	}
+
+	// Apply the operation locally
+	if args.Op == "Append" {
+		value, _ := pb.dict[args.Key]
+		pb.dict[args.Key] = value + args.Value
+	} else if args.Op == "Put" {
+		pb.dict[args.Key] = args.Value
+	} else {
+		reply.Err = "Unknown Operation"
+		return nil
 	}
 
 	// Mark the request as processed
@@ -95,6 +98,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 }
 
 func (pb *PBServer) ForwardPutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
+	// TODO: Your code here.
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
@@ -111,12 +115,8 @@ func (pb *PBServer) ForwardPutAppend(args *PutAppendArgs, reply *PutAppendReply)
 
 	// Apply the operation
 	if args.Op == "Append" {
-		value, exists := pb.dict[args.Key]
-		if !exists{
-			pb.dict[args.Key] = args.Value
-		} else{
-			pb.dict[args.Key] = value + args.Value
-		}
+		value, _ := pb.dict[args.Key]
+		pb.dict[args.Key] = value + args.Value
 	} else if args.Op == "Put" {
 		pb.dict[args.Key] = args.Value
 	} else {
@@ -148,45 +148,45 @@ func (pb *PBServer) ReceiveState(args *TransferArgs, reply *TransferReply) error
 func (pb *PBServer) tick() {
 	// TODO: Your code here.
 	pb.mu.Lock()
-	defer pb.mu.Unlock()
-	// Ping the viewservice
-	view, err := pb.vs.Ping(pb.currentView.Viewnum)
+	myViewNum := pb.currentView.Viewnum
+	pb.mu.Unlock()
+
+	view, err := pb.vs.Ping(myViewNum)
 	if err != nil {
 		// Handle error
 		return
 	}
-	// Check if the view has changed
-	if view.Viewnum != pb.currentView.Viewnum {
-		oldBackup := pb.currentView.Backup
-		pb.currentView = view
-		if pb.me == pb.currentView.Primary {
-			// If the backup has changed, transfer state to new backup
-			if oldBackup != view.Backup && view.Backup != "" {
-				go pb.TransferStateToBackup()
-			}
+
+	pb.mu.Lock()
+	oldBackup := pb.currentView.Backup
+	pb.currentView = view
+	if pb.me == pb.currentView.Primary {
+		// If the backup has changed, transfer state to new backup
+		if oldBackup != view.Backup && view.Backup != "" {
+			go pb.TransferStateToBackup()
 		}
 	}
-	//check if the numbers are different
-	// _, view := pb.vs.Get()
-	
-	pb.vs.Ping(pb.currentView.Viewnum) //regradless if update then send Ping to view server
+	pb.mu.Unlock()
 }
 
 func (pb *PBServer) TransferStateToBackup() {
-	pb.mu.Lock()
-	defer pb.mu.Unlock()
+	for {
+		pb.mu.Lock()
+		args := &TransferArgs{
+			Id:           nrand(),
+			Me:           pb.me,
+			Dict:         pb.copyDict(),
+			SeenRequests: pb.copySeenRequests(),
+		}
+		backup := pb.currentView.Backup
+		pb.mu.Unlock()
 
-	args := &TransferArgs{
-		Id:           nrand(),
-		Me:           pb.me,
-		Dict:         pb.copyDict(),
-		SeenRequests: pb.copySeenRequests(),
-	}
-
-	var reply TransferReply
-	ok := call(pb.currentView.Backup, "PBServer.ReceiveState", args, &reply)
-	if !ok || reply.Err != OK {
-		// Handle error, possibly retry
+		var reply TransferReply
+		ok := call(backup, "PBServer.ReceiveState", args, &reply)
+		if ok && reply.Err == OK {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -201,12 +201,11 @@ func (pb *PBServer) copyDict() map[string]string {
 
 func (pb *PBServer) copySeenRequests() map[int64]bool {
 	newSeen := make(map[int64]bool)
-	//for k, v := range pb.seenRequests {
-		//newSeen[k] = v
-	//}
+	for k, v := range pb.seenRequests {
+		newSeen[k] = v
+	}
 	return newSeen
 }
-
 
 // tell the server to shut itself down.
 // please do not change these two functions.
