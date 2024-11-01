@@ -77,6 +77,8 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 		if !ok || backupReply.Err != OK {
 			fmt.Printf("Failed to replicate to backup: %v\n", pb.currentView.Backup)
 			// Proceed anyway
+			reply.Err = "backup failed"
+			return nil
 		}
 	}
 
