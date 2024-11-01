@@ -91,7 +91,6 @@ func (ck *Clerk) Get(key string) string {
 
 		if ok {
 			if reply.Err == OK {
-				fmt.Println(reply.Value, "FD")
 				return reply.Value
 			} else if reply.Err == ErrNoKey {
 				return ""
