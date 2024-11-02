@@ -42,7 +42,6 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 		reply.Err = ErrWrongServer
 		return nil
 	}
-
 	value, exists := pb.dict[args.Key]
 	// fmt.Println(value, exists, "get")
 	if !exists {
@@ -51,6 +50,8 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 		reply.Err = OK
 		reply.Value = value
 	}
+	fmt.Println("REQ RESOPNDED GET", reply.Value, pb.me, pb.currentView.Primary, "null", pb.currentView.Backup) 
+
 	return nil
 }
 
@@ -58,7 +59,6 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	// TODO: Your code here.
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
-
 	if pb.me != pb.currentView.Primary {
 		reply.Err = ErrWrongServer
 		return nil
@@ -69,16 +69,21 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 		reply.Err = OK
 		return nil
 	}
-
-	// Forward the operation to the backup
-	if pb.currentView.Backup != "" {
-		var backupReply PutAppendReply
-		ok := call(pb.currentView.Backup, "PBServer.ForwardPutAppend", args, &backupReply)
-		if !ok || backupReply.Err != OK {
-			fmt.Printf("Failed to replicate to backup: %v\n", pb.currentView.Backup)
-			// Proceed anyway
-			reply.Err = "backup failed"
-			return nil
+	for {
+	pb.seenRequests[args.Id] = true
+		// Forward the operation to the backup
+		if pb.currentView.Backup != "" && pb.currentView.Backup != pb.currentView.Primary{
+			var backupReply PutAppendReply
+			ok := call(pb.currentView.Backup, "PBServer.ForwardPutAppend", args, &backupReply)
+			if !ok || backupReply.Err != OK {
+				fmt.Printf("Failed to replicate to backup: %v\n", pb.currentView.Backup)
+				// Proceed anyway
+				reply.Err = "backup failed"
+				// return nil
+				time.Sleep(100 * time.Millisecond)
+			}  else{
+				break
+			}
 		}
 	}
 
@@ -94,7 +99,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	}
 
 	// Mark the request as processed
-	pb.seenRequests[args.Id] = true
+
 	reply.Err = OK
 	return nil
 }
@@ -149,9 +154,10 @@ func (pb *PBServer) ReceiveState(args *TransferArgs, reply *TransferReply) error
 //	manage transfer of state from primary to new backup.
 func (pb *PBServer) tick() {
 	// TODO: Your code here.
-	pb.mu.Lock()
+	// pb.mu.Lock()
+	// defer pb.mu.Unlock()
 	myViewNum := pb.currentView.Viewnum
-	pb.mu.Unlock()
+	// pb.mu.Unlock()
 
 	view, err := pb.vs.Ping(myViewNum)
 	if err != nil {
@@ -159,7 +165,7 @@ func (pb *PBServer) tick() {
 		return
 	}
 
-	pb.mu.Lock()
+	// pb.mu.Lock()
 	oldBackup := pb.currentView.Backup
 	pb.currentView = view
 	if pb.me == pb.currentView.Primary {
@@ -168,7 +174,7 @@ func (pb *PBServer) tick() {
 			go pb.TransferStateToBackup()
 		}
 	}
-	pb.mu.Unlock()
+	// pb.mu.Unlock()
 }
 
 func (pb *PBServer) TransferStateToBackup() {

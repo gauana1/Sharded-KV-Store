@@ -440,7 +440,6 @@ func checkAppends(t *testing.T, v string, counts []int) {
 // i.e. that they processed the Append()s in the same order.
 func TestConcurrentSameAppend(t *testing.T) {
 	runtime.GOMAXPROCS(4)
-
 	tag := "csa"
 	vshost := port(tag+"v", 1)
 	vs := viewservice.StartServer(vshost)
@@ -580,7 +579,6 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 	}
 
 	done := int32(0)
-
 	view1, _ := vck.Get()
 	const nclients = 3
 	const nkeys = 2
@@ -595,6 +593,7 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 			for atomic.LoadInt32(&done) == 0 {
 				k := strconv.Itoa(rr.Int() % nkeys)
 				v := strconv.Itoa(rr.Int())
+				fmt.Println(k,v, "this")
 				ck.Put(k, v)
 			}
 			ok = true
@@ -620,7 +619,6 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 			t.Fatalf("Get(%v) failed from primary", i)
 		}
 	}
-
 	// kill the primary
 	for i := 0; i < nservers; i++ {
 		if view1.Primary == sa[i].me {
