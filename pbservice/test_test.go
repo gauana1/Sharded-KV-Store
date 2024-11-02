@@ -593,7 +593,6 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 			for atomic.LoadInt32(&done) == 0 {
 				k := strconv.Itoa(rr.Int() % nkeys)
 				v := strconv.Itoa(rr.Int())
-				fmt.Println(k,v, "this")
 				ck.Put(k, v)
 			}
 			ok = true

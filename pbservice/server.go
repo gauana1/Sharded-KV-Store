@@ -50,7 +50,6 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 		reply.Err = OK
 		reply.Value = value
 	}
-	fmt.Println("REQ RESOPNDED GET", reply.Value, pb.me, pb.currentView.Primary, "null", pb.currentView.Backup) 
 
 	return nil
 }
@@ -69,14 +68,13 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 		reply.Err = OK
 		return nil
 	}
-	for {
 	pb.seenRequests[args.Id] = true
+	for {
 		// Forward the operation to the backup
 		if pb.currentView.Backup != "" && pb.currentView.Backup != pb.currentView.Primary{
 			var backupReply PutAppendReply
 			ok := call(pb.currentView.Backup, "PBServer.ForwardPutAppend", args, &backupReply)
 			if !ok || backupReply.Err != OK {
-				fmt.Printf("Failed to replicate to backup: %v\n", pb.currentView.Backup)
 				// Proceed anyway
 				reply.Err = "backup failed"
 				// return nil
@@ -84,6 +82,8 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 			}  else{
 				break
 			}
+		} else{
+			break
 		}
 	}
 
