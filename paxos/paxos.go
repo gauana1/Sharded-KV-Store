@@ -145,12 +145,10 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 		return false
 	}
 	defer c.Close()
-
 	err = c.Call(name, args, reply)
 	if err == nil {
 		return true
 	}
-
 	fmt.Println(err)
 	return false
 }
@@ -164,7 +162,6 @@ func (px *Paxos) Start(seq int, v interface{}) {
 	if seq < px.Min() {
 		return
 	}
-
 	px.instancesMu.Lock()
 	if _, ok := px.instances[seq]; !ok {
 		px.instances[seq] = &PaxosInstance{
@@ -172,11 +169,10 @@ func (px *Paxos) Start(seq int, v interface{}) {
 			N_a:     0,
 			Decided: false,
 			Value:   nil,
-			V_a:     nil,
+			V_a:     v,
 		}
-	}
+	} 
 	px.instancesMu.Unlock()
-
 	go px.proposer(seq, v)
 }
 
@@ -186,11 +182,12 @@ func (px *Paxos) Start(seq int, v interface{}) {
 // see the comments for Min() for more explanation.
 func (px *Paxos) Done(seq int) {
 	// TODO: Your code here.
-	px.doneMu.Lock()
-	defer px.doneMu.Unlock()
-	if seq > px.doneValues[px.me] {
-		px.doneValues[px.me] = seq
-	}
+	// px.doneMu.Lock()
+	// defer px.doneMu.Unlock()
+	// if seq > px.doneValues[px.me] {
+	// 	px.doneValues[px.me] = seq
+	// }
+	px.updateDoneValues(px.me, seq)
 }
 
 // the application wants to know the
@@ -198,6 +195,7 @@ func (px *Paxos) Done(seq int) {
 // this peer.
 func (px *Paxos) Max() int {
 	// Your code here.
+	fmt.Println(px.me, "ERR", px.doneValues[px.me], len(px.instances))
 	px.instancesMu.Lock()
 	defer px.instancesMu.Unlock()
 	max := -1
@@ -251,15 +249,13 @@ func (px *Paxos) Min() int {
 			min = doneSeq
 		}
 	}
-
 	px.instancesMu.Lock()
 	defer px.instancesMu.Unlock()
 	for seq := range px.instances {
-		if seq <= min {
+		if seq < min {
 			delete(px.instances, seq)
 		}
 	}
-
 	return min + 1
 }
 
@@ -294,7 +290,7 @@ func (px *Paxos) Status(seq int) (Fate, interface{}) {
 func (px *Paxos) proposer(seq int, v interface{}) {
 	// Initialize proposal number.
 	n := rand.Intn(1000000)
-	for !px.isdead() {
+	for !px.isdead() { //TODO: figure out later why
 		minSeq := px.Min()
 		if seq < minSeq {
 			return
@@ -303,7 +299,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 		// Prepare Phase
 		prepareOKs := 0
 		var v_prime interface{} = v
-		maxN_a := -1
+		maxN_a := -1 //-1 don't include self?
 
 		for _, peer := range px.peers {
 			args := PrepareArgs{
@@ -317,19 +313,19 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 			var err error
 			if peer == px.peers[px.me] {
 				err = px.Prepare(&args, &reply)
-				ok = (err == nil)
+				ok = (err == nil) //no need to send rpc to self
 			} else {
-				ok = call(peer, "Paxos.Prepare", &args, &reply)
+				ok = call(peer, "Paxos.Prepare", &args, &reply) //send rpc to peer
 			}
 			if ok {
 				px.updateDoneValues(reply.Me, reply.Done)
 				if reply.OK {
 					prepareOKs++
-					if reply.N_a > maxN_a {
+					if reply.N_a > maxN_a { 
 						maxN_a = reply.N_a
 						v_prime = reply.V_a
 					}
-				} else {
+				} else { //not too sure about this line, if reply not ok
 					if reply.N > n {
 						n = reply.N + 1
 					}
@@ -339,8 +335,8 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 			}
 		}
 
-		if prepareOKs <= len(px.peers)/2 {
-			n += 1
+		if prepareOKs <= len(px.peers)/2 { //dont' get majority
+			n += 1 //increment sequence number
 			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 			continue
 		}
@@ -355,7 +351,6 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 				Done: px.doneValues[px.me],
 				Me:   px.me,
 			}
-
 			var reply AcceptReply
 			var ok bool
 			var err error
@@ -377,6 +372,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 			} else {
 				// Retry later if RPC failed.
 			}
+
 		}
 
 		if acceptOKs <= len(px.peers)/2 {
@@ -490,12 +486,12 @@ func (px *Paxos) Decided(args *DecidedArgs, reply *DecidedReply) error {
 // updateDoneValues updates the doneValues slice with the latest done value from a peer.
 func (px *Paxos) updateDoneValues(peer int, done int) {
 	px.doneMu.Lock()
-	defer px.doneMu.Unlock()
 	if peer >= 0 && peer < len(px.doneValues) {
 		if done > px.doneValues[peer] {
 			px.doneValues[peer] = done
 		}
 	}
+	px.doneMu.Unlock()
 }
 
 // tell the peer to shut itself down.
