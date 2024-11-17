@@ -77,6 +77,7 @@ type PrepareArgs struct {
 	N    int
 	Done int
 	Me   int
+	Val  interface{}
 }
 
 // reply for Prepare RPC.
@@ -195,7 +196,6 @@ func (px *Paxos) Done(seq int) {
 // this peer.
 func (px *Paxos) Max() int {
 	// Your code here.
-	fmt.Println(px.me, "ERR", px.doneValues[px.me], len(px.instances))
 	px.instancesMu.Lock()
 	defer px.instancesMu.Unlock()
 	max := -1
@@ -299,7 +299,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 		// Prepare Phase
 		prepareOKs := 0
 		var v_prime interface{} = v
-		maxN_a := -1 //-1 don't include self?
+		maxN_a := -1
 
 		for _, peer := range px.peers {
 			args := PrepareArgs{
@@ -307,6 +307,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 				N:    n,
 				Done: px.doneValues[px.me],
 				Me:   px.me,
+				Val:  v_prime,
 			}
 			var reply PrepareReply
 			var ok bool
@@ -325,22 +326,20 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 						maxN_a = reply.N_a
 						v_prime = reply.V_a
 					}
-				} else { //not too sure about this line, if reply not ok
+				} else {
 					if reply.N > n {
-						n = reply.N + 1
+						n = reply.N 
 					}
 				}
 			} else {
 				// Retry later if RPC failed.
 			}
-		}
-
+		}		
 		if prepareOKs <= len(px.peers)/2 { //dont' get majority
 			n += 1 //increment sequence number
 			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 			continue
 		}
-
 		// Accept Phase
 		acceptOKs := 0
 		for _, peer := range px.peers {
@@ -366,7 +365,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 					acceptOKs++
 				} else {
 					if reply.N > n {
-						n = reply.N + 1
+						n = reply.N
 					}
 				}
 			} else {
@@ -374,13 +373,11 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 			}
 
 		}
-
 		if acceptOKs <= len(px.peers)/2 {
 			n += 1
 			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 			continue
 		}
-
 		// Decide Phase
 		for _, peer := range px.peers {
 			args := DecidedArgs{
@@ -393,7 +390,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 			// var err error
 			if peer == px.peers[px.me] {
 				// err = px.Decided(&args, &reply)
-				px.Decided(&args, &reply)
+				px.Decided(	&args, &reply)
 			} else {
 				call(peer, "Paxos.Decided", &args, &reply)
 			}
@@ -406,7 +403,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 	px.instancesMu.Lock()
 	if _, exists := px.instances[args.Seq]; !exists {
-		px.instances[args.Seq] = &PaxosInstance{}
+		px.instances[args.Seq] = &PaxosInstance{Decided: false, Value:nil, V_a:args.Val}
 	}
 	instance := px.instances[args.Seq]
 	px.instancesMu.Unlock()
@@ -417,7 +414,6 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 	reply.Seq = args.Seq
 	reply.N = args.N
 	reply.Me = px.me
-
 	if args.N > instance.N_p {
 		instance.N_p = args.N
 		reply.OK = true

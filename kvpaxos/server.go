@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 const Debug = 0
@@ -27,6 +28,11 @@ type Op struct {
 	// TODO: Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	OpType    string
+	Key       string
+	Value     string
+	ClientID  int64
+	RequestID int64
 }
 
 type KVPaxos struct {
@@ -38,17 +44,75 @@ type KVPaxos struct {
 	px         *paxos.Paxos
 
 	// TODO: Your definitions here.
+	db   map[string]string
+	seq  int // next paxos seq num to use
+	last int // last paxos instance applied to state
 }
 
 func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
-	// TODO: Your code here.
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	value, exists := kv.db[args.Key]
+	if exists {
+		reply.Value = value
+		reply.Err = OK
+	} else {
+		reply.Err = ErrNoKey
+	}
 	return nil
 }
 
 func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
-	// TODO: Your code here.
-
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	op := Op{
+		OpType:    args.Op,
+		Key:       args.Key,
+		Value:     args.Value,
+		ClientID:  args.ClientID,
+		RequestID: args.RequestID,
+	}
+	seq := kv.seq
+	kv.seq++
+	for {
+		kv.px.Start(seq, op)
+		decidedOp := kv.waitAndCheck(seq)
+		
+		//Dupe handling Logic
+		if decidedOp.ClientID == args.ClientID && decidedOp.RequestID == args.RequestID {
+			reply.Err = OK
+			kv.px.Done(seq)
+			break
+		} else {
+			seq = kv.seq
+			kv.seq++
+		}
+	}
+	if args.Op == "Append" {
+		value, exists := kv.db[args.Key]
+		if exists {
+			kv.db[args.Key] = value + args.Value
+		} else {
+			kv.db[args.Key] = value + args.Value
+		}
+	} else {
+		kv.db[args.Key] = args.Value
+	}
 	return nil
+}
+
+func (kv *KVPaxos) waitAndCheck(seq int) Op {
+	timeout := 10 * time.Millisecond
+	for {
+		status, val := kv.px.Status(seq)
+		if status == paxos.Decided {
+			return val.(Op)
+		}
+		time.Sleep(timeout)
+		if timeout < 10*time.Second{
+			timeout *= 2
+		}
+	}
 }
 
 // tell the server to shut itself down.
@@ -91,7 +155,10 @@ func StartServer(servers []string, me int) *KVPaxos {
 	kv.me = me
 
 	// TODO: Your initialization code here.
-
+	kv.db = make(map[string]string)
+	kv.seq = 0
+	kv.last = -1
+	
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
 

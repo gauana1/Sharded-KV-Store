@@ -516,7 +516,6 @@ func TestRPCCount(t *testing.T) {
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i, nil)
 	}
-
 	ninst1 := 5
 	seq := 0
 	for i := 0; i < ninst1; i++ {
@@ -544,8 +543,6 @@ func TestRPCCount(t *testing.T) {
 		for j := 0; j < npaxos; j++ {
 			go pxa[j].Start(seq, j+(i*10)) //fails here
 		}
-	
-		fmt.Println(i, "HERE")
 		waitn(t, pxa, seq, npaxos)
 		seq++
 	}
@@ -842,9 +839,7 @@ func TestPartition(t *testing.T) {
 
 func TestLots(t *testing.T) {
 	runtime.GOMAXPROCS(4)
-
 	fmt.Printf("Test: Many requests, changing partitions ...\n")
-
 	tag := "lots"
 	const npaxos = 5
 	var pxa []*Paxos = make([]*Paxos, npaxos)

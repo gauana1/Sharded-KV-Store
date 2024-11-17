@@ -69,12 +69,9 @@ func TestBasic(t *testing.T) {
 	ck.Append("app", "x")
 	ck.Append("app", "y")
 	check(t, ck, "app", "xy")
-
 	ck.Put("a", "aa")
 	check(t, ck, "a", "aa")
-
 	cka[1].Put("a", "aaa")
-
 	check(t, cka[2], "a", "aaa")
 	check(t, cka[1], "a", "aaa")
 	check(t, ck, "a", "aaa")

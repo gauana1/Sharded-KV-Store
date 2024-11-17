@@ -16,6 +16,8 @@ type PutAppendArgs struct {
 	// TODO: You'll have to add definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	ClientID 	int64
+	RequestID 	int64
 }
 
 type PutAppendReply struct {
@@ -25,6 +27,8 @@ type PutAppendReply struct {
 type GetArgs struct {
 	Key string
 	// TODO: You'll have to add definitions here.
+	ClientID 	int64
+	RequestID 	int64	
 }
 
 type GetReply struct {
