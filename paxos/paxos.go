@@ -174,6 +174,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 		}
 	} 
 	px.instancesMu.Unlock()
+	time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 	go px.proposer(seq, v)
 }
 
@@ -401,6 +402,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 
 // Prepare handles the Prepare RPC from proposers.
 func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
+	time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 	px.instancesMu.Lock()
 	if _, exists := px.instances[args.Seq]; !exists {
 		px.instances[args.Seq] = &PaxosInstance{Decided: false, Value:nil, V_a:args.Val}

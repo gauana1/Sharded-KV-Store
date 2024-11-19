@@ -21,6 +21,7 @@ type PutAppendArgs struct {
 }
 
 type PutAppendReply struct {
+
 	Err Err
 }
 

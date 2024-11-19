@@ -72,6 +72,7 @@ func TestBasic(t *testing.T) {
 	ck.Put("a", "aa")
 	check(t, ck, "a", "aa")
 	cka[1].Put("a", "aaa")
+	println("FDSFD")
 	check(t, cka[2], "a", "aaa")
 	check(t, cka[1], "a", "aaa")
 	check(t, ck, "a", "aaa")
@@ -408,6 +409,7 @@ func TestUnreliable(t *testing.T) {
 				myck := randclerk(kvh)
 				key := strconv.Itoa(me)
 				vv := myck.Get(key)
+				println(vv, "VV")
 				myck.Append(key, "0")
 				vv = NextValue(vv, "0")
 				myck.Append(key, "1")
@@ -415,6 +417,7 @@ func TestUnreliable(t *testing.T) {
 				myck.Append(key, "2")
 				vv = NextValue(vv, "2")
 				time.Sleep(100 * time.Millisecond)
+				println(myck.Get(key), vv, "WHY", myck.Get(key) == vv, me)
 				if myck.Get(key) != vv {
 					t.Fatalf("wrong value")
 				}
