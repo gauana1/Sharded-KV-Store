@@ -65,16 +65,12 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 		PrevID:   args.PrevID,
 	}
 
-	println(kv.seq, args.Key, "START", kv.me)
 	kv.seq++
 	for {
 		kv.px.Start(kv.seq, op)
 		decidedOp := kv.waitAndCheck(kv.seq)
-		println(kv.seq, args.Key, "GET", kv.me)
 		//Dupe handling Logic
-		println(decidedOp.OpType, "TYPE")
 		if decidedOp.ClientID == args.ClientID && decidedOp.PrevID == args.PrevID {
-			println(kv.seq, args.Key, "NO WAY", kv.me)
 			reply.Err = OK
 			kv.px.Done(kv.seq)
 			break
@@ -87,10 +83,10 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 			}
 		} else if decidedOp.OpType == "Put" {
 			kv.db[decidedOp.Key] = decidedOp.Value
-			println("PUTTTT")
 		}
+		kv.seenreqs[decidedOp.PrevID] = true
 		kv.seq++
-	}
+	}	
 	val, exists := kv.db[args.Key]
 	if !exists {
 		reply.Value = ""
@@ -121,7 +117,6 @@ func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	kv.seq++
 	for {
 		kv.px.Start(kv.seq, op)
-		println(kv.seq, args.Op, args.Value, "PUTAPPEND", kv.me)
 		decidedOp := kv.waitAndCheck(kv.seq)
 
 		//Dupe handling Logic
@@ -138,7 +133,9 @@ func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 			}
 		} else if decidedOp.OpType == "Put" {
 			kv.db[decidedOp.Key] = decidedOp.Value
+		} else {
 		}
+		kv.seenreqs[decidedOp.PrevID] = true
 		kv.seq++
 	}
 	if args.Op == "Append" {

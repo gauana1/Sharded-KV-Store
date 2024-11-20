@@ -72,7 +72,6 @@ func TestBasic(t *testing.T) {
 	ck.Put("a", "aa")
 	check(t, ck, "a", "aa")
 	cka[1].Put("a", "aaa")
-	println("FDSFD")
 	check(t, cka[2], "a", "aaa")
 	check(t, cka[1], "a", "aaa")
 	check(t, ck, "a", "aaa")
@@ -612,7 +611,7 @@ func TestHole(t *testing.T) {
 func TestManyPartition(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
-	fmt.Printf("Test: Many clients, changing partitions ...\n")
+	fmt.Printf("Test: Manyfffff clients, changing partitions ...\n")
 
 	tag := "many"
 	const nservers = 5

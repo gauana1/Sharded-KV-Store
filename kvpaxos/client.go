@@ -71,19 +71,18 @@ func (ck *Clerk) Get(key string) string {
 	args := &GetArgs{
 		Key:      key,
 		ClientID: ck.me,
-		PrevID:   ck.PrevID,
+		PrevID:   nrand(),
 	}
 	var reply GetReply
 	ok := false
 	for !ok {
 		for _, server := range ck.servers {
-			ok := call(server, "KVPaxos.Get", args, &reply)
+			ok = call(server, "KVPaxos.Get", args, &reply)
 			if !ok {
 				time.Sleep(time.Millisecond * 100)
 			}
 		}
 	}
-	ck.PrevID = ck.me
 	return reply.Value
 }
 
@@ -94,19 +93,21 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		Op:       op,
 		Value:    value,
 		ClientID: ck.me,
-		PrevID:   ck.PrevID,
+		PrevID:   nrand(),
 	}
 	var reply PutAppendReply
 	ok := false
 	for !ok {
 		for _, server := range ck.servers {
-			ok := call(server, "KVPaxos.PutAppend", args, &reply)
+			ok = call(server, "KVPaxos.PutAppend", args, &reply)
 			if !ok {
 				time.Sleep(time.Millisecond * 100)
+			} else{
+				break
 			}
 		}
 	}
-	ck.PrevID = ck.me
+
 }
 
 func (ck *Clerk) Put(key string, value string) {
