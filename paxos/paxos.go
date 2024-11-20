@@ -160,9 +160,6 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 // call Status() to find out if/when agreement
 // is reached.
 func (px *Paxos) Start(seq int, v interface{}) {
-	if seq < px.Min() {
-		return
-	}
 	px.instancesMu.Lock()
 	if _, ok := px.instances[seq]; !ok {
 		px.instances[seq] = &PaxosInstance{
@@ -402,7 +399,7 @@ func (px *Paxos) proposer(seq int, v interface{}) {
 
 // Prepare handles the Prepare RPC from proposers.
 func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
-	time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+	time.Sleep(time.Duration(rand.Intn(2)) * time.Millisecond)
 	px.instancesMu.Lock()
 	if _, exists := px.instances[args.Seq]; !exists {
 		px.instances[args.Seq] = &PaxosInstance{Decided: false, Value:nil, V_a:args.Val}

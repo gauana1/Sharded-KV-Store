@@ -652,7 +652,6 @@ func TestOld(t *testing.T) {
 // many agreements, with unreliable RPC
 func TestManyUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
-
 	fmt.Printf("Test: Many instances, unreliable RPC ...\n")
 
 	const npaxos = 3
