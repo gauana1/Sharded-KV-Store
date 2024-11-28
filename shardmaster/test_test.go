@@ -1,13 +1,15 @@
 package shardmaster
 
-import "testing"
-import "runtime"
-import "strconv"
-import "os"
+import (
+	"fmt"
+	"math/rand"
+	"os"
+	"runtime"
+	"strconv"
+	"testing"
+)
 
 // import "time"
-import "fmt"
-import "math/rand"
 
 func port(tag string, host int) string {
 	s := "/var/tmp/824-"
@@ -101,9 +103,7 @@ func TestBasic(t *testing.T) {
 
 	cfa := make([]Config, 6)
 	cfa[0] = ck.Query(-1)
-
 	check(t, []int64{}, ck)
-
 	var gid1 int64 = 1
 	ck.Join(gid1, []string{"x", "y", "z"})
 	check(t, []int64{gid1}, ck)
@@ -214,7 +214,6 @@ func TestBasic(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 
 	fmt.Printf("Test: Concurrent leave/join ...\n")
-
 	const npara = 10
 	gids := make([]int64, npara)
 	var ca [npara]chan bool
