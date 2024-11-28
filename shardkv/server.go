@@ -27,6 +27,12 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 
 type Op struct {
 	// Your definitions here.
+	OpType string
+	Key    string //for put appends
+	Value  string //for gets
+	ReqId  int64
+	Shard  int
+	Err    Err
 }
 
 type ShardKV struct {
@@ -41,22 +47,155 @@ type ShardKV struct {
 	gid int64 // my replica group ID
 
 	// TODO: Your definitions here.
+	current_config 	shardmaster.Config
+	seq 		int
+	db 			map[string]string
+	
 }
 
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) error {
 	// TODO: Your code here.
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	op := Op{
+		OpType: "Get",
+		Key : args.Key,
+		Shard : args.Shard,
+		ReqId: nrand(),
+	}
+	for {
+		kv.px.Start(kv.seq, op)
+		decidedOp := kv.waitAndCheck(kv.seq)
+		if decidedOp.ReqId == op.ReqId{
+			kv.px.Done(kv.seq)
+			kv.seq ++ 
+			break
+		} else{
+			kv.ApplyOp(decidedOp)
+		}
+		kv.seq ++ 
+	}
+	if kv.current_config.Shards[args.Shard] == kv.gid{
+		//right shard, apply put
+		value , exists := kv.db[args.Key]; if exists{
+			reply.Value = value
+			reply.Err = OK
+		} else{
+			reply.Err = ErrNoKey
+		}
+	} else{
+		reply.Err = ErrWrongGroup
+	}
 	return nil
 }
 
 // RPC handler for client Put and Append requests
 func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	// TODO: Your code here.
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	op := Op{
+		OpType: "Get",
+		Key : args.Key,
+		Value : args.Value,
+		Shard :args.Shard,
+		ReqId: nrand(),
+	}
+	for {
+		kv.px.Start(kv.seq, op)
+		decidedOp := kv.waitAndCheck(kv.seq)
+		if decidedOp.ReqId == op.ReqId{
+			kv.px.Done(kv.seq)
+			kv.seq ++ 
+			break
+		} else{
+			kv.ApplyOp(decidedOp)
+		}
+		kv.seq ++ 
+	}
+	if kv.current_config.Shards[args.Shard] != kv.gid{
+		reply.Err = ErrWrongGroup
+		return nil
+	}
+	if op.OpType == "Put"{
+		kv.db[args.Key] = args.Value
+		reply.Err = OK
+	} else if op.OpType == "Append"{
+		_, exists := kv.db[args.Key]; if exists{
+			kv.db[args.Key] += args.Value
+			reply.Err = OK
+		} else {
+			kv.db[args.Key] = args.Value
+			reply.Err = OK
+		}
+	}
 	return nil
 }
 
 // Ask the shardmaster if there's a new configuration;
 // if so, re-configure.
-func (kv *ShardKV) tick() {
+func (kv *ShardKV) tick() { // i think you can block when you tick, since then when calling other get appends you don't have to catch up as much 
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	op := Op{
+		OpType: "Change",
+		ReqId: nrand(),
+	}
+	for {
+		kv.px.Start(kv.seq, op)
+		decidedOp := kv.waitAndCheck(kv.seq)
+		if decidedOp.ReqId == op.ReqId{
+			kv.px.Done(kv.seq)
+			kv.seq ++ 
+			break
+		} else{
+			kv.ApplyOp(decidedOp)
+		}
+		kv.seq ++ 
+	}
+	kv.ApplyOp(op)
+}
+
+
+func(kv *ShardKV) ApplyOp(op Op){
+	if op.OpType == "Get"{
+		//do nothing on gets
+	} else if op.OpType == "Put"{
+		//still check if right shard, else can ignore the put
+		if kv.current_config.Shards[op.Shard] == kv.gid{
+			//right shard, apply put
+			kv.db[op.Key] = op.Value
+		}
+		
+	} else if op.OpType == "Append"{
+		if kv.current_config.Shards[op.Shard] == kv.gid{
+			//right shard, apply put
+			_ , exists := kv.db[op.Key]; if exists{
+				kv.db[op.Key] += op.Value
+			} else{
+				kv.db[op.Key] = op.Value
+			}
+		}
+	} else if op.OpType == "Change"{
+		latest_config := kv.sm.Query(-1)
+		if latest_config.Num > kv.current_config.Num{
+			kv.current_config = latest_config
+		}//else do nothing
+	}
+}
+
+func (kv *ShardKV) waitAndCheck(seq int) Op {
+	timeout := 10 * time.Millisecond
+	for {
+		status, val := kv.px.Status(seq)
+		if status == paxos.Decided {
+			return val.(Op)
+		}
+		time.Sleep(timeout)
+		if timeout < 10*time.Second {
+			timeout *= 2
+		}
+	}
 }
 
 // tell the server to shut itself down.
