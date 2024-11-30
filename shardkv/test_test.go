@@ -126,7 +126,6 @@ func TestBasic(t *testing.T) {
 	fmt.Printf("Test: Basic Join/Leave ...\n")
 
 	tc.join(0)
-
 	ck := tc.clerk()
 
 	ck.Put("a", "x")
@@ -134,7 +133,6 @@ func TestBasic(t *testing.T) {
 	if ck.Get("a") != "xb" {
 		t.Fatalf("Get got wrong value")
 	}
-
 	keys := make([]string, 10)
 	vals := make([]string, len(keys))
 	for i := 0; i < len(keys); i++ {
@@ -188,7 +186,7 @@ func TestMove(t *testing.T) {
 
 	// insert one key per shard
 	for i := 0; i < shardmaster.NShards; i++ {
-		ck.Put(string('0'+i), string('0'+i))
+		ck.Put(strconv.Itoa(i), strconv.Itoa(i))
 	}
 
 	// add group 1.
@@ -197,7 +195,7 @@ func TestMove(t *testing.T) {
 
 	// check that keys are still there.
 	for i := 0; i < shardmaster.NShards; i++ {
-		if ck.Get(string('0'+i)) != string('0'+i) {
+		if ck.Get(strconv.Itoa(i)) != strconv.Itoa(i) {
 			t.Fatalf("missing key/value")
 		}
 	}
@@ -212,8 +210,8 @@ func TestMove(t *testing.T) {
 	for i := 0; i < shardmaster.NShards; i++ {
 		go func(me int) {
 			myck := tc.clerk()
-			v := myck.Get(string('0' + me))
-			if v == string('0'+me) {
+			v := myck.Get(strconv.Itoa(me))
+			if v == strconv.Itoa(me) {
 				mu.Lock()
 				atomic.AddInt32(&count, 1)
 				mu.Unlock()

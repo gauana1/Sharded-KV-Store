@@ -28,6 +28,15 @@ type PutAppendArgs struct {
 
 }
 
+type TransferArgs struct{
+	Shard int
+	Dict map[string]string
+	Seq  int
+
+}
+type TransferReply struct{
+	Err Err
+}
 type PutAppendReply struct {
 	Err Err
 }

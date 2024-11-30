@@ -94,10 +94,11 @@ func (ck *Clerk) Get(key string) string {
 		if ok {
 			// try each server in the shard's replication group.
 			for _, srv := range servers {
-				args := &GetArgs{}
-				args.Key = key
+				args := &GetArgs{Key: key, Shard: shard}
 				var reply GetReply
+				println("GET")
 				ok := call(srv, "ShardKV.Get", args, &reply)
+				println("GET2")
 				if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
 					return reply.Value
 				}
@@ -122,6 +123,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// TODO: You'll have to modify PutAppend().
 
 	for {
+		println("PA")
 		shard := key2shard(key)
 
 		gid := ck.config.Shards[shard]
@@ -135,6 +137,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				args.Key = key
 				args.Value = value
 				args.Op = op
+				args.Shard = shard
 				var reply PutAppendReply
 				ok := call(srv, "ShardKV.PutAppend", args, &reply)
 				if ok && reply.Err == OK {

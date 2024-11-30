@@ -50,10 +50,6 @@ func Balance(new_shards *[10]int64, gid_map map[int64]int) {
 			new_shards[i] = 0
 		}
 	}
-	for _, GID := range new_shards {
-		print(GID, " ")
-	}
-	println("BEFORE")
 	for {
 		//rest values
 		for GID := range gid_map{
@@ -126,10 +122,6 @@ func Balance(new_shards *[10]int64, gid_map map[int64]int) {
 		}
 		
 	}
-	for _, GID := range new_shards {
-		print(GID, " ")
-	}
-	println("AFTER")
 }
 
 func CopyMap[K comparable, V any](original map[K]V) map[K]V {
@@ -147,13 +139,8 @@ func (sm *ShardMaster) ApplyOp(op Op) {
 	old_shards := sm.configs[n-1].Shards
 	if op.OpType == "Join" {
 		new_group[op.GID] = op.Servers
-		println(len(new_group), "JOIN", sm.me, op.GID)
-		for GID, _ := range new_group {
-			print(GID, " ")
-		}
-		println("GROUP")
 		gid_map := make(map[int64]int)
-		for GID, _ := range new_group {
+		for GID := range new_group {
 			gid_map[GID] = 0
 		}
 		Balance(&old_shards, gid_map) //modifies old_shards
@@ -162,20 +149,13 @@ func (sm *ShardMaster) ApplyOp(op Op) {
 	} else if op.OpType == "Leave" {
 		delete(new_group, op.GID)
 		gid_map := make(map[int64]int)
-		for GID, _ := range new_group {
+		for GID := range new_group {
 			gid_map[GID] = 0
 		}
-		println("GROUP")
-		println(len(new_group), "LEAVE", sm.me, op.GID)
-		for GID, _ := range new_group {
-			print(GID, " ")
-		}
-		println()
 		Balance(&old_shards, gid_map) //modifies the old_shards
 		new_config := Config{Num: n, Groups: new_group, Shards: old_shards}
 		sm.configs = append(sm.configs, new_config)
 	} else if op.OpType == "Move" {
-		println("MOVEING", op.GID, op.Shard, sm.me)
 		old_shards[op.Shard] = op.GID
 		new_config := Config{Num: n, Groups: new_group, Shards: old_shards}
 		sm.configs = append(sm.configs, new_config)
