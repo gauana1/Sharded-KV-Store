@@ -24,17 +24,17 @@ type PutAppendArgs struct {
 	// TODO: You'll have to add definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
-	Shard int
-
+	Shard    int
+	ClientID int64
+	PrevID   int64
 }
 
-type TransferArgs struct{
+type TransferArgs struct {
 	Shard int
-	Dict map[string]string
-	Seq  int
-
+	Dict  map[string]string
+	Seq   int
 }
-type TransferReply struct{
+type TransferReply struct {
 	Err Err
 }
 type PutAppendReply struct {
@@ -44,11 +44,12 @@ type PutAppendReply struct {
 type GetArgs struct {
 	Key string
 	// TODO: You'll have to add definitions here.
-	Shard int //have to know what shard to send this to
+	Shard    int //have to know what shard to send this to
+	ClientID int64
+	PrevID   int64
 }
 
 type GetReply struct {
 	Err   Err
 	Value string
 }
-
