@@ -86,6 +86,9 @@ func (ck *Clerk) Get(key string) string {
 
 	// TODO: You'll have to modify Get().
 
+	//do not do this for each server
+	args := &GetArgs{Key: key, ClientID: nrand(), PrevID: ck.prevReq}
+
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
@@ -94,9 +97,8 @@ func (ck *Clerk) Get(key string) string {
 		if ok {
 			// try each server in the shard's replication group.
 			for _, srv := range servers {
-				args := &GetArgs{Key: key, Shard: shard, ClientID: nrand(), PrevID: ck.prevReq}
-				var reply GetReply
 				//println("GET")
+				var reply GetReply
 				ok := call(srv, "ShardKV.Get", args, &reply)
 				//println("GET2")
 				if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
@@ -122,6 +124,13 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	defer ck.mu.Unlock()
 
 	// TODO: You'll have to modify PutAppend().
+	args := &PutAppendArgs{
+		Key:      key,
+		Value:    value,
+		Op:       op,
+		ClientID: nrand(),
+		PrevID:   ck.prevReq,
+	}
 
 	for {
 		//println("PA")
@@ -132,14 +141,6 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		if ok {
 			// try each server in the shard's replication group.
 			for _, srv := range servers {
-				args := &PutAppendArgs{
-					Key:      key,
-					Value:    value,
-					Op:       op,
-					Shard:    shard,
-					ClientID: nrand(),
-					PrevID:   ck.prevReq,
-				}
 				var reply PutAppendReply
 				ok := call(srv, "ShardKV.PutAppend", args, &reply)
 				if ok && reply.Err == OK {

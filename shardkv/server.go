@@ -69,13 +69,20 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) error {
 		OpType: "Get",
 		Key:    args.Key,
 		Shard:  args.Shard,
-		ReqId:  nrand(),
+		ReqId:  args.ClientID,
 		PrevID: args.PrevID,
 	}
 
 	//println(kv.current_config.Shards[op.Shard], "GID CORES")
 	if kv.current_config.Shards[op.Shard] != kv.gid {
 		reply.Err = ErrWrongGroup
+		return nil
+	}
+
+	prev, ok := kv.prevRequests[op.ReqId]
+	if ok && prev == op.Key {
+		reply.Value = kv.db[op.Shard][op.Key]
+		reply.Err = OK
 		return nil
 	}
 
@@ -90,30 +97,16 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) error {
 				delete(kv.prevRequests, op.PrevID)
 			}
 		}
-		kv.ApplyOp(decidedOp)
-		kv.px.Done(kv.seq)
-
-		var getReply GetReply
-		var putAppendReply PutAppendReply
 		if decidedOp.ReqId == op.ReqId {
-			val := kv.prevRequests[op.ReqId]
-			if val == ErrNoKey {
-				getReply.Value = ""
-				getReply.Err = ErrNoKey
-			} else {
-				getReply.Value = kv.prevRequests[op.ReqId]
-				getReply.Err = OK
-			}
-
-			putAppendReply.Err = OK
-
+			kv.px.Done(kv.seq)
 			break
+		} else {
+			kv.ApplyOp(decidedOp)
 		}
 	}
 
 	dict, exists := kv.db[args.Shard]
 	if exists {
-		//right shard, apply put
 		value, e := dict[args.Key]
 		if e {
 			reply.Value = value
@@ -133,13 +126,13 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	// TODO: Your code here.
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-
+	println("PUTAPPEND")
 	op := Op{
 		OpType: args.Op,
 		Key:    args.Key,
 		Value:  args.Value,
 		Shard:  args.Shard,
-		ReqId:  nrand(),
+		ReqId:  args.ClientID,
 		PrevID: args.PrevID,
 	}
 
@@ -149,8 +142,33 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 		return nil
 	}
 
+	prev, ok := kv.prevRequests[op.ReqId]
+	if ok && prev == op.Key {
+		reply.Err = OK
+		return nil
+	}
+
+	for {
+		kv.seq++
+		kv.px.Start(kv.seq, op)
+		decidedOp := kv.waitAndCheck(kv.seq)
+		if op.PrevID != -1 { //clean up previous requests log
+			_, ok := kv.prevRequests[op.PrevID]
+			if ok {
+				delete(kv.prevRequests, op.PrevID)
+			}
+		}
+		if decidedOp.ReqId == op.ReqId {
+			kv.px.Done(kv.seq)
+			break
+		} else {
+			kv.ApplyOp(decidedOp)
+		}
+	}
+
 	_, ex := kv.db[args.Shard]
 	if !ex {
+		println("nil map")
 		kv.db[args.Shard] = make(map[string]string)
 	}
 	if op.OpType == "Put" {
@@ -164,37 +182,6 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 		} else {
 			kv.db[args.Shard][args.Key] = args.Value
 			reply.Err = OK
-		}
-	}
-
-	for {
-		kv.seq++
-		kv.px.Start(kv.seq, op)
-		decidedOp := kv.waitAndCheck(kv.seq)
-		if op.PrevID != -1 { //clean up previous requests log
-			_, ok := kv.prevRequests[op.PrevID]
-			if ok {
-				delete(kv.prevRequests, op.PrevID)
-			}
-		}
-		kv.ApplyOp(decidedOp)
-		kv.px.Done(kv.seq)
-
-		var getReply GetReply
-		var putAppendReply PutAppendReply
-		if decidedOp.ReqId == op.ReqId {
-			val := kv.prevRequests[op.ReqId]
-			if val == ErrNoKey {
-				getReply.Value = ""
-				getReply.Err = ErrNoKey
-			} else {
-				getReply.Value = kv.prevRequests[op.ReqId]
-				getReply.Err = OK
-			}
-
-			putAppendReply.Err = OK
-
-			break
 		}
 	}
 
@@ -220,7 +207,7 @@ func (kv *ShardKV) waitAndCheck(seq int) Op {
 func (kv *ShardKV) tick() { // i think you can block when you tick, since then when calling other get appends you don't have to catch up as much
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-
+	// println("TICK")
 	latest_config := (kv.sm.Query(-1)).Num
 	if latest_config == kv.current_config.Num { //if it is up to date, do nothing
 		return
@@ -231,7 +218,6 @@ func (kv *ShardKV) tick() { // i think you can block when you tick, since then w
 		ReqId:  int64(latest_config),
 	}
 
-	//kv.Run
 	for {
 		kv.seq++
 		//println("FUCK")
@@ -245,30 +231,24 @@ func (kv *ShardKV) tick() { // i think you can block when you tick, since then w
 				delete(kv.prevRequests, op.PrevID)
 			}
 		}
-		kv.ApplyOp(decidedOp)
-		kv.px.Done(kv.seq)
-
-		var getReply GetReply
-		var putAppendReply PutAppendReply
 		if decidedOp.ReqId == op.ReqId {
-			val := kv.prevRequests[op.ReqId]
-			if val == ErrNoKey {
-				getReply.Value = ""
-				getReply.Err = ErrNoKey
-			} else {
-				getReply.Value = kv.prevRequests[op.ReqId]
-				getReply.Err = OK
-			}
-
-			putAppendReply.Err = OK
-
+			kv.px.Done(kv.seq)
 			break
+		} else {
+			kv.ApplyOp(decidedOp)
 		}
 	}
+	kv.ApplyOp(op)
 }
 
 func (kv *ShardKV) Transfer(args *TransferArgs, reply *TransferReply) error {
 	//first we have to transfer state
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	_, ex := kv.db[args.Shard]
+	if !ex {
+		kv.db[args.Shard] = make(map[string]string)
+	}
 	kv.db[args.Shard] = args.Dict //update the dict
 	kv.px.Done(args.Seq)          //call done
 	reply.Err = OK
@@ -276,6 +256,29 @@ func (kv *ShardKV) Transfer(args *TransferArgs, reply *TransferReply) error {
 }
 
 func (kv *ShardKV) ApplyOp(op Op) {
+	switch op.OpType {
+	case "Get":
+		prev, ok := kv.db[op.Shard][op.Key]
+		if ok {
+			kv.prevRequests[op.ReqId] = prev
+		} else {
+			kv.prevRequests[op.ReqId] = ErrNoKey
+		}
+	case "Put":
+		kv.db[op.Shard][op.Key] = op.Value
+		kv.prevRequests[op.ReqId] = OK
+	case "Append":
+		prev, ok := kv.db[op.Shard][op.Key]
+		if ok {
+			kv.db[op.Shard][op.Key] = prev + op.Value
+		} else {
+			kv.db[op.Shard][op.Key] = op.Value
+		}
+		kv.prevRequests[op.ReqId] = OK
+	case "Change":
+		//TODO
+	}
+
 	if op.OpType == "Get" {
 		//do nothing on gets
 	} else if op.OpType == "Put" {
