@@ -141,10 +141,12 @@ func TestBasic(t *testing.T) {
 		ck.Put(keys[i], vals[i])
 	}
 	// are keys still there after joins?
+	println(ck.Get(keys[0]), "TRYNNA INDUL")
 	for g := 1; g < len(tc.groups); g++ {
 		tc.join(g)
 		time.Sleep(1 * time.Second)
 		for i := 0; i < len(keys); i++ {
+			println("HEL")
 			v := ck.Get(keys[i])
 			if v != vals[i] {
 				t.Fatalf("joining; wrong value; g=%v k=%v wanted=%v got=%v",

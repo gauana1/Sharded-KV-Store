@@ -91,7 +91,7 @@ func (ck *Clerk) Get(key string) string {
 
 	for {
 		shard := key2shard(key)
-		// args.Shard = shard
+		args.Shard = shard
 		gid := ck.config.Shards[shard]
 		servers, ok := ck.config.Groups[gid]
 		if ok {
@@ -110,7 +110,7 @@ func (ck *Clerk) Get(key string) string {
 				}
 			}
 		}
-
+		println("CLEINT CHANGE CONFIG")
 		time.Sleep(100 * time.Millisecond)
 
 		// ask master for a new configuration.
