@@ -91,9 +91,9 @@ func (ck *Clerk) Get(key string) string {
 
 	for {
 		shard := key2shard(key)
+		// args.Shard = shard
 		gid := ck.config.Shards[shard]
 		servers, ok := ck.config.Groups[gid]
-
 		if ok {
 			// try each server in the shard's replication group.
 			for _, srv := range servers {
@@ -135,6 +135,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	for {
 		//println("PA")
 		shard := key2shard(key)
+		args.Shard = shard
 		gid := ck.config.Shards[shard]
 		servers, ok := ck.config.Groups[gid]
 

@@ -140,7 +140,6 @@ func TestBasic(t *testing.T) {
 		vals[i] = strconv.Itoa(rand.Int())
 		ck.Put(keys[i], vals[i])
 	}
-
 	// are keys still there after joins?
 	for g := 1; g < len(tc.groups); g++ {
 		tc.join(g)
