@@ -1,5 +1,7 @@
 package shardkv
 
+import "cs134-24f-kv/shardmaster"
+
 //
 // Sharded key/value server.
 // Lots of replica groups, each running op-at-a-time paxos.
@@ -31,10 +33,12 @@ type PutAppendArgs struct {
 
 type TransferArgs struct {
 	Shard int
-	Dict  map[string]string
+	Num   int 
 	Seq   int
+	Config 	shardmaster.Config
 }
 type TransferReply struct {
+	Dict map[string]string 
 	Err Err
 }
 type PutAppendReply struct {

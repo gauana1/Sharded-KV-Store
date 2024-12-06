@@ -97,7 +97,6 @@ func (ck *Clerk) Get(key string) string {
 		if ok {
 			// try each server in the shard's replication group.
 			for _, srv := range servers {
-				//println("GET")
 				var reply GetReply
 				ok := call(srv, "ShardKV.Get", args, &reply)
 				//println("GET2")
@@ -110,7 +109,6 @@ func (ck *Clerk) Get(key string) string {
 				}
 			}
 		}
-		println("CLEINT CHANGE CONFIG")
 		time.Sleep(100 * time.Millisecond)
 
 		// ask master for a new configuration.
