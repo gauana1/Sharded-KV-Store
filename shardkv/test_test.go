@@ -123,7 +123,7 @@ func TestBasic(t *testing.T) {
 	tc := setup(t, "basic", false)
 	defer tc.cleanup()
 
-	fmt.Printf("Test: Basic Join/Leave ...\n")
+	fmt.Printf("Test: Basic Join/Ledave ...\n")
 
 	tc.join(0)
 	ck := tc.clerk()
@@ -275,7 +275,6 @@ func TestLimp(t *testing.T) {
 			ck.Put(keys[i], vals[i])
 		}
 	}
-
 	// are keys still there after leaves?
 	for gi := 0; gi < len(tc.groups)-1; gi++ {
 		tc.leave(gi)
@@ -345,13 +344,13 @@ func doConcurrent(t *testing.T, unreliable bool) {
 }
 
 func TestConcurrent(t *testing.T) {
-	fmt.Printf("Test: Concurrent Put/Get/Move ...\n")
+	fmt.Printf("Test: Cuoncurrent Put/Get/Move ...\n")
 	doConcurrent(t, false)
 	fmt.Printf("  ... Passed\n")
 }
 
 func TestConcurrentUnreliable(t *testing.T) {
-	fmt.Printf("Test: Concurrent Put/Get/Move (unreliable) ...\n")
+	fmt.Printf("Test: Concurrentddd Put/Get/Move (unreliable) ...\n")
 	doConcurrent(t, true)
 	fmt.Printf("  ... Passed\n")
 }

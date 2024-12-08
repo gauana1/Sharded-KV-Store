@@ -51,7 +51,8 @@ type ShardKV struct {
 	// TODO: Your definitions here.
 	current_config shardmaster.Config
 	seq            int
-	db             map[int]map[int]map[string]string
+	db 			   map[string]string 
+	snapshots      map[int](map[string]string)
 	prevRequests   map[int64]string //have to log previous requests
 }
 
@@ -73,7 +74,7 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) error {
 	}
 	prev, ok := kv.prevRequests[op.ReqId]
 	if ok && prev == op.Key {
-		reply.Value = kv.db[kv.current_config.Num][op.Shard][op.Key]
+		reply.Value = kv.db[op.Key]
 		reply.Err = OK
 		return nil
 	}
@@ -94,23 +95,20 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) error {
 			kv.ApplyOp(decidedOp)
 		}
 	}
-	n := kv.current_config.Num
 	if kv.current_config.Shards[op.Shard] != kv.gid {
 		reply.Err = ErrWrongGroup
+		kv.prevRequests[op.ReqId] = ErrWrongGroup
 		return nil
 	}
-	_, exists := kv.db[n][args.Shard]
+	value , exists := kv.db[args.Key]
 	if exists {
-		value, e := kv.db[n][args.Shard][args.Key]
-		if e {
-			reply.Value = value
-			reply.Err = OK
+		reply.Value = value
+		reply.Err = OK
 		} else {
+			reply.Value = ""
 			reply.Err = ErrNoKey
-		}
-	} else{
-		reply.Err = ErrNoKey
 	}
+	kv.prevRequests[op.ReqId] = reply.Value
 	return nil
 }
 
@@ -144,10 +142,10 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 		kv.seq++
 		kv.px.Start(kv.seq, op)
 		decidedOp := kv.waitAndCheck(kv.seq)
-		if op.PrevID != -1 { //clean up previous requests log
-			_, ok := kv.prevRequests[op.PrevID]
+		if op.ReqId != -1 { //clean up previous requests log
+			_, ok := kv.prevRequests[op.ReqId]
 			if ok {
-				delete(kv.prevRequests, op.PrevID)
+				delete(kv.prevRequests, op.ReqId)
 			}
 		}
 		if decidedOp.ReqId == op.ReqId {
@@ -160,28 +158,23 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 
 	if kv.current_config.Shards[op.Shard] != kv.gid {
 		reply.Err = ErrWrongGroup
+		kv.prevRequests[op.ReqId] =ErrWrongGroup
 		return nil
 	}
-
-	n := kv.current_config.Num
-	_, ex := kv.db[n][args.Shard]
-	if !ex {
-		kv.db[n][args.Shard] = make(map[string]string)
-	}
 	if op.OpType == "Put" {
-		kv.db[n][args.Shard][args.Key] = args.Value
+		kv.db[args.Key] = args.Value
 		reply.Err = OK
 	} else if op.OpType == "Append" {
-		_, exists := kv.db[n][args.Shard][args.Key]
+		_, exists := kv.db[args.Key]
 		if exists {
-			kv.db[n][args.Shard][args.Key] += args.Value
+			kv.db[args.Key] += args.Value
 			reply.Err = OK
 		} else {
-			kv.db[n][args.Shard][args.Key] = args.Value
+			kv.db[args.Key] = args.Value
 			reply.Err = OK
 		}
 	}
-
+	kv.prevRequests[op.ReqId] = OK
 	return nil
 }
 
@@ -213,7 +206,7 @@ func (kv *ShardKV) tick() { // i think you can block when you tick, since then w
 
 	op := Op{
 		OpType: "Change",
-		ReqId:  int64(latest_config.Num),
+		ReqId:  nrand(),
 		Config: latest_config,
 	}
 
@@ -222,12 +215,12 @@ func (kv *ShardKV) tick() { // i think you can block when you tick, since then w
 		kv.px.Start(kv.seq, op)
 		decidedOp := kv.waitAndCheck(kv.seq)
 
-		if op.PrevID != -1 { //clean up previous requests log
-			_, ok := kv.prevRequests[op.PrevID]
+		if op.ReqId != -1 { //clean up previous requests log
+			_, ok := kv.prevRequests[op.ReqId]
 			if ok {
-				delete(kv.prevRequests, op.PrevID)
+				delete(kv.prevRequests, op.ReqId)
 			}
-		}
+		}       
 		if decidedOp.ReqId == op.ReqId {
 			kv.px.Done(kv.seq)
 			break
@@ -236,104 +229,100 @@ func (kv *ShardKV) tick() { // i think you can block when you tick, since then w
 		}
 	}
 	kv.ApplyOp(op)
+	kv.prevRequests[op.ReqId]= OK
 }
 
 func (kv *ShardKV) Transfer(args *TransferArgs, reply *TransferReply) error {
 	//first we have to transfer state
-	kv.mu.Lock()
-	// println("TRANFER HAS LOCK")
-	defer kv.mu.Unlock()
-	_ , exists := kv.db[args.Num][args.Shard]; if exists{
-		reply.Dict = kv.db[args.Num][args.Shard]
+	// kv.mu.Lock()
+	// defer kv.mu.Unlock()
+	db, exists := kv.snapshots[args.Num]
+	if exists{
+		reply.Dict = db
+		reply.Err = OK
+	} else{
+		reply.Err = ErrNoKey
 	}
-	reply.Err = OK
-	kv.px.Done(args.Seq) 
 	return nil
 }
 
 func (kv *ShardKV) ApplyOp(op Op) {
-	n := kv.current_config.Num
-	if op.OpType == "Get" && kv.current_config.Shards[op.Shard] == kv.gid{
+	if op.OpType == "Get" && kv.current_config.Shards[op.Shard] == kv.gid {
 		//do nothing on gets
-		prev, ok := kv.db[n][op.Shard][op.Key]
+		prev, ok := kv.db[op.Key]
 		if ok {
 			kv.prevRequests[op.ReqId] = prev
 		} else {
 			kv.prevRequests[op.ReqId] = ErrNoKey
 		}
-	} else if op.OpType == "Put" && kv.current_config.Shards[op.Shard] == kv.gid{
+	} else if op.OpType == "Put" && kv.current_config.Shards[op.Shard] == kv.gid {
 		//still check if right shard, else can ignore the put
-		_, exists := kv.db[n][op.Shard]
-		if exists {
-			kv.db[n][op.Shard][op.Key] = op.Value	
-		}
+		kv.db[op.Key] = op.Value
 		kv.prevRequests[op.ReqId] = OK
-	} else if op.OpType == "Append" && kv.current_config.Shards[op.Shard] == kv.gid{
+	} else if op.OpType == "Append" && kv.current_config.Shards[op.Shard] == kv.gid {
 		// _ , e := kv.db[n][op.Shard]
-		_, exists := kv.db[n][op.Shard][op.Key]
+		_, exists := kv.db[op.Key]
 		if exists {
-			kv.db[n][op.Shard][op.Key] += op.Value	
-		} else{
-			kv.db[n][op.Shard][op.Key] = op.Value		
+			kv.db[op.Key] += op.Value
+		} else {
+			kv.db[op.Key] = op.Value
 		}
 		kv.prevRequests[op.ReqId] = OK
 	} else if op.OpType == "Change" {
-		old_config := kv.current_config
-		latest_config := op.Config
-		//have to make a new dict every config change, this is the start of the config change
-		kv.db[latest_config.Num] = make(map[int]map[string]string) 
-		//first have to request a transfer
-		for shard, GID := range latest_config.Shards {
-			if GID == kv.gid{
-				if  old_config.Shards[shard] != kv.gid {
-					//have to transfer state
-					query_gid := old_config.Shards[shard]
-					num := latest_config.Num
-					args := &TransferArgs{
-						Num: old_config.Num,
-						Shard: shard,
-						Seq:   kv.seq,
-						Config: kv.current_config,
-					}
-					var reply TransferReply	
-					success := false
-					for _, server := range old_config.Groups[query_gid] {
-						if success{
-							break
+		for op.Config.Num > kv.current_config.Num{
+			old_config := kv.current_config
+			latest_config := kv.sm.Query(old_config.Num + 1)
+			//have to make a new dict every config change, this is the start of the config change
+			temp := make(map[string]string)
+			for key, value := range kv.db {
+				shard := key2shard(key)
+				if kv.current_config.Shards[shard] == kv.gid {
+					temp[key] = value
+				}
+			}
+			kv.snapshots[old_config.Num] = temp
+			//first have to request a transfer
+			for shard, GID := range latest_config.Shards {
+				if GID == kv.gid {
+					if old_config.Shards[shard] != kv.gid {
+						//have to transfer state
+						query_gid := old_config.Shards[shard]
+						args := &TransferArgs{
+							Num:    old_config.Num,
+							Shard:  shard,
+							Seq:    kv.seq,
+							Config: kv.current_config,
 						}
-						for {
-							ok := call(server, "ShardKV.Transfer", args, &reply)
-							if ok && reply.Err == OK {
-								success = true
+						var reply TransferReply
+						success := false
+						for _, server := range old_config.Groups[query_gid] {
+							if success {
 								break
 							}
-							time.Sleep(100 * time.Millisecond)
-						}
+							for {
+								ok := call(server, "ShardKV.Transfer", args, &reply)
+								if ok && reply.Err == OK {
+									success = true
+									break
+								}
+								time.Sleep(100 * time.Millisecond)
+							}
 
-					}
-					//adjust dictionary now
-					_ , exists := kv.db[num][shard] ; if !exists{
-						kv.db[num][shard] = make(map[string]string)
-					}
-					for key, value := range reply.Dict{
-						kv.db[num][shard][key] = value
-					}
-				} else{
-					num := latest_config.Num
-					_ , exists := kv.db[num][shard] ; if !exists{
-						kv.db[num][shard] = make(map[string]string)
-					}
-					for key, value := range kv.db[num-1][shard]{
-						kv.db[num][shard][key] = value
-					}
-				}	
-		//have to do some rpc stuff here
-		} //else do nothing
-		kv.current_config = latest_config
-		kv.prevRequests[op.ReqId] = OK
+						}
+						for key, value := range reply.Dict {
+							kv.db[key] = value
+						}
+					} 
+					//have to do some rpc stuff here
+				} //else do nothing
+				kv.current_config = latest_config
+				kv.prevRequests[op.ReqId] = OK
+			}
+		}
 	}
+		
 }
-}
+
 // tell the server to shut itself down.
 // please don't change these two functions.
 func (kv *ShardKV) kill() {
@@ -382,7 +371,8 @@ func StartServer(gid int64, shardmasters []string,
 
 	// TODO: Your initialization code here.
 	kv.seq = 0
-	kv.db = make(map[int]map[int]map[string]string)
+	kv.db = make(map[string]string)
+	kv.snapshots = make(map[int]map[string]string)
 	kv.prevRequests = make(map[int64]string)
 	// Don't call Join().
 
